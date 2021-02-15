@@ -1,0 +1,83 @@
+pipeline {
+    agent { docker {
+        image 'tag:0.0.1'
+        label '<host>'
+        registryCredentialsId '<docker_user>'
+        registryUrl '<docker_registry_url>'
+        args '''-u <user> -v <volume to mount>'''
+    }}
+    options {
+        newContainerPerStage()
+        disableConcurrentBuilds()
+        parallelsAlwaysFailFast()
+    }
+    environment {
+        PYTHONPATH =  ''
+        AUTOMATION_DIR = '<dir for automation files>'
+    }
+    stages {
+        stage("checkout") {
+            steps {
+                updateGitlabCommitStatus state: 'running'
+                checkout changelog: true, poll: true, scm: [
+                $class: 'GitSCM',
+                branches: [[name: env.gitlabSourceBranch]],
+                doGenerateSubmoduleConfigurations: false,
+                extensions: [
+                    [$class: 'RelativeTargetDirectory', relativeTargetDir: '<project_name>'],
+                ],
+                submoduleCfg: [],
+                userRemoteConfigs: [[
+                    credentialsId: 'gitlab-ssh-key',
+                    url: '<git url>']]]
+            }
+        }
+        stage('static code analysis') {
+                    steps {
+                        dir('<project_dir|source_dir>') {
+                            sh 'pylint'
+                        }
+                    }
+                }
+            }
+        }
+        stage("tests") {
+            parallel {
+                stage("unittests") {
+                    environment {
+                        <environment variables>
+                    }
+                    steps {
+                        dir('tests') {
+                            sh 'pytest'
+                        }
+                    }
+                }
+            }
+        }
+        stage ("build other job") {
+            steps {
+                build job: 'other-build', parameters: [
+                string(name: 'gitBranch', value: "master")
+                ]
+                <extra steps>
+            }
+        }
+    }
+    post {
+        failure {
+            script {  // update gitlab status in case job was triggered by gitlab
+                if (env.gitlabTargetBranch) { // if env var exists gitlab triggered the job
+                    updateGitlabCommitStatus state: 'failed'
+                }
+            }
+        }
+        success {
+            script {  // update gitlab status in case job was triggered by gitlab
+                if (env.gitlabTargetBranch) {  // if env var exists gitlab triggered the job
+                    updateGitlabCommitStatus state: 'success'
+                }
+            }
+        }
+    }
+}

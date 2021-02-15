@@ -1,0 +1,25 @@
+node('<desired-node-to-run-on>') {
+    script {
+        if (params.gitBranch) {
+            echo 'using parameter as source branch'
+            env.gitlabSourceBranch = params.gitBranch
+        } else {
+            echo 'using gitlab env vars'
+        }
+    }
+    checkout changelog: true, poll: true, scm: [
+        $class: 'GitSCM',
+        branches: [[name: env.gitlabSourceBranch]],
+        doGenerateSubmoduleConfigurations: false,
+        extensions: [
+            [$class: 'RelativeTargetDirectory', relativeTargetDir: '<project_name>'],
+        ],
+        submoduleCfg: [],
+        userRemoteConfigs: [[
+            credentialsId: 'gitlab-ssh-key',
+            url: '<git url>']]
+    ]
+
+    // Start the build
+    load 'path to desired jenkinsfile in repo'
+}
