@@ -1,0 +1,50 @@
+pipeline {
+    agent { node { label 'general' }}
+    parameters {
+        string(name: 'GIT_BRANCH', defaultValue: '<repo branch>', description: 'branch to build project from')
+        string(name: 'PROJECT_NAME', defaultValue: '<python project name>', description: 'project to build package from')
+        string(name: 'REPOSITORY_NAME', defaultValue: '<repo name>', description: 'pypi project repository')
+    }
+    environment {
+        PATH = "$HOME/.poetry/bin:$PATH"
+    }
+    stages {
+        stage('build image') {
+            steps {
+                checkout changelog: true, poll: true, scm: [
+                $class: 'GitSCM',
+                branches: [[name: params.GIT_BRANCH]],
+                doGenerateSubmoduleConfigurations: false,
+                extensions: [
+                    [$class: 'RelativeTargetDirectory', relativeTargetDir: params.PROJECT_NAME]
+                ],
+                submoduleCfg: [],
+                userRemoteConfigs: [[
+                    credentialsId: '<git credentials>',
+                    url: '<git repo url>']]]
+                
+                script {
+                    dir(params.PROJECT_NAME) {
+                        script {
+                            if (fileExists('./pyproject.toml')) {
+                                withCredentials([usernamePassword(credentialsId: '<pipy credentials>', usernameVariable: 'REPO_USERNAME', passwordVariable: 'REPO_PASSWORD')]) {
+                                    sh 'poetry config repositories.<repo name in poetry> <artifacts registry url>'
+                                    sh 'poetry config http-basic.<repo name in poetry> $REPO_USERNAME $REPO_PASSWORD'
+                                    sh 'poetry build'
+                                    sh 'poetry publish -u $REPO_USERNAME -p $REPO_PASSWORD --repository <repo name>'
+                                }
+                            } else {
+                                withCredentials([usernamePassword(credentialsId: '<pipy credentials>', usernameVariable: 'REPO_USERNAME', passwordVariable: 'REPO_PASSWORD')]) {
+                                sh '''
+                                  python3 setup.py sdist bdist_wheel
+                                  python3 -m twine upload -u $REPO_USERNAME -p $REPO_PASSWORD --repository-url <pipy artifacts registry url>/ dist/*
+                                '''
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

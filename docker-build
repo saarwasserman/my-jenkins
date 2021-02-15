@@ -1,0 +1,35 @@
+pipeline {
+    agent { node { label '<node label>' }}
+    parameters {
+        string(name: 'BRANCH_NAME', defaultValue: '<branch_name>', description: 'branch to build docker image from')
+        string(name: 'PROJECT_NAME', defaultValue: '<project_name>', description: 'project to build docker image from')
+        string(name: 'NAME_AND_TAG', defaultValue: '<image_name>:<image_version>', description: 'name and tag of image')
+    }
+    stages {
+        stage('build image') {
+            steps {
+                checkout changelog: true, poll: true, scm: [
+                $class: 'GitSCM',
+                branches: [[name: params.BRANCH_NAME]],
+                doGenerateSubmoduleConfigurations: false,
+                extensions: [
+                    [$class: 'RelativeTargetDirectory', relativeTargetDir: params.PROJECT_NAME]
+                ],
+                submoduleCfg: [],
+                userRemoteConfigs: [[
+                    credentialsId: '<git credentials>',
+                    url: '<git repo url>']]]
+                
+                script {
+                    dir(params.PROJECT_NAME) {
+                        sh 'ls'
+                        docker.withRegistry('<docker_registry_url>', '<registry_credentials>') {
+                            def customImage = docker.build(params.NAME_AND_TAG, "--no-cache .")
+                            customImage.push()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
